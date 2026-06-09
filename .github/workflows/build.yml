@@ -1,0 +1,67 @@
+name: Build & Push Excalidraw
+
+on:
+  workflow_dispatch:
+    inputs:
+      excalidraw_ref:
+        description: "Branch, tag ou commit do repo oficial excalidraw/excalidraw"
+        required: true
+        default: "master"
+      image_tag:
+        description: "Tag adicional pra imagem (além de latest)"
+        required: false
+        default: ""
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/excalidraw
+  WS_SERVER_URL: https://excalidraw-room.agenciabluediamond.com
+  BACKEND_V2_URL: https://excalidraw-storage.agenciabluediamond.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        id: img
+        run: echo "name=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute tags
+        id: tags
+        run: |
+          REF="${{ inputs.excalidraw_ref }}"
+          SAFE_REF=$(echo "$REF" | tr '/' '-' | tr -cd 'a-zA-Z0-9._-')
+          TAGS="${{ env.REGISTRY }}/${{ steps.img.outputs.name }}:latest"
+          TAGS="$TAGS,${{ env.REGISTRY }}/${{ steps.img.outputs.name }}:$SAFE_REF"
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ steps.img.outputs.name }}:${{ inputs.image_tag }}"
+          fi
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            EXCALIDRAW_REF=${{ inputs.excalidraw_ref }}
+            WS_SERVER_URL=${{ env.WS_SERVER_URL }}
+            BACKEND_V2_URL=${{ env.BACKEND_V2_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
