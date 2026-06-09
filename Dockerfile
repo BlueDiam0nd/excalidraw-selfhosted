@@ -38,6 +38,11 @@ RUN printf '%s\n' \
 RUN yarn install --frozen-lockfile --network-timeout 600000 \
  && yarn build:app:docker
 
+# Injeta hook do library no index.html (resiste a bumps do upstream).
+COPY library-hook.js /tmp/library-hook.js
+RUN cp /tmp/library-hook.js /src/excalidraw-app/build/__library-hook.js \
+ && sed -i 's|</head>|<script src="/__library-hook.js" defer></script></head>|' /src/excalidraw-app/build/index.html
+
 FROM nginx:alpine
 COPY --from=builder /src/excalidraw-app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
