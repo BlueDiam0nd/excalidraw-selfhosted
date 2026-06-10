@@ -38,6 +38,9 @@ RUN { \
 } >> .env.production \
  && echo "===== .env.production final =====" && cat .env.production
 
+# Substitui firebase.ts por overlay NOOP (sem Firebase em prod self-hosted).
+COPY firebase-overlay.ts excalidraw-app/data/firebase.ts
+
 RUN yarn install --frozen-lockfile --network-timeout 600000 \
  && yarn build:app:docker
 
