@@ -19,21 +19,24 @@ RUN apk add --no-cache git python3 make g++ \
 
 WORKDIR /src
 
-# Sobrescreve .env.production com nossas URLs antes do build do Vite.
+# Sobrescreve overrides no .env.production da RAIZ do repo (que é o que o Vite lê).
 # As envs VITE_APP_* são congeladas no bundle final.
-RUN printf '%s\n' \
-  "VITE_APP_BACKEND_V2_GET_URL=${BACKEND_V2_URL}/api/v2/scenes/" \
-  "VITE_APP_BACKEND_V2_POST_URL=${BACKEND_V2_URL}/api/v2/scenes/" \
-  "VITE_APP_WS_SERVER_URL=${WS_SERVER_URL}" \
-  "VITE_APP_HTTP_STORAGE_BACKEND_URL=${BACKEND_V2_URL}/api/v2" \
-  "VITE_APP_STORAGE_BACKEND=http" \
-  "VITE_APP_FIREBASE_CONFIG={}" \
-  "VITE_APP_DISABLE_TRACKING=true" \
-  "VITE_APP_DISABLE_SENTRY=true" \
-  "VITE_APP_PLUS_LP=" \
-  "VITE_APP_PLUS_APP=" \
-  "VITE_APP_AI_BACKEND=" \
-  > excalidraw-app/.env.production
+RUN { \
+  echo ""; \
+  echo "# overrides BlueDiamond"; \
+  echo "VITE_APP_BACKEND_V2_GET_URL=${BACKEND_V2_URL}/api/v2/scenes/"; \
+  echo "VITE_APP_BACKEND_V2_POST_URL=${BACKEND_V2_URL}/api/v2/scenes/"; \
+  echo "VITE_APP_WS_SERVER_URL=${WS_SERVER_URL}"; \
+  echo "VITE_APP_HTTP_STORAGE_BACKEND_URL=${BACKEND_V2_URL}/api/v2"; \
+  echo "VITE_APP_STORAGE_BACKEND=http"; \
+  echo "VITE_APP_FIREBASE_CONFIG={}"; \
+  echo "VITE_APP_DISABLE_TRACKING=true"; \
+  echo "VITE_APP_DISABLE_SENTRY=true"; \
+  echo "VITE_APP_AI_BACKEND="; \
+  echo "VITE_APP_PLUS_LP="; \
+  echo "VITE_APP_PLUS_APP="; \
+} >> .env.production \
+ && echo "===== .env.production final =====" && cat .env.production
 
 RUN yarn install --frozen-lockfile --network-timeout 600000 \
  && yarn build:app:docker
