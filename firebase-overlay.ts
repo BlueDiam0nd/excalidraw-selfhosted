@@ -32,4 +32,9 @@ export const loadFilesFromFirebase = async (
   erroredFiles: new Map(),
 });
 
-export const loadFirebaseStorage = async () => null;
+// Retorna objeto fake tipado como `any` pra satisfazer callsites que ainda
+// chamam `ref(storage, ...)` em runtime (ex: ExportToExcalidrawPlus). Mesmo
+// assim, em runtime essas chamadas falham — mas o user self-hosted não usa
+// Export to Excalidraw+ (produto pago externo).
+export const loadFirebaseStorage = async (): Promise<any> =>
+  ({ _selfHostedNoop: true } as any);
