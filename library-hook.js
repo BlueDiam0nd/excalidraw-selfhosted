@@ -36,7 +36,7 @@
             .replace(/^Excalidraw.*?[-—|]\s*/i, "")
             .trim() || null,
       }),
-      credentials: "omit",
+      credentials: "include",
     })
       .then(function (r) {
         log("POST status", r.status);
