@@ -52,39 +52,52 @@ const filesEndpoint = (id: FileId) =>
   `${STORAGE_URL}/files/${encodeURIComponent(id)}`;
 
 // -----------------------------------------------------------------------------
-// Helpers de base64 (binary direto, sem URL-safe)
+// Protocolo binário (evita o JSON body-parser default de 100kb do NestJS;
+// raw-parser do storage backend aceita 50mb com qualquer content-type).
+// Layout:
+//   [4 bytes sceneVersion BE][12 bytes IV][N bytes ciphertext]
 // -----------------------------------------------------------------------------
 
-const bytesToBase64 = (bytes: Uint8Array): string => {
-  let bin = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode.apply(
-      null,
-      Array.from(bytes.subarray(i, i + chunk)),
-    );
-  }
-  return btoa(bin);
+const IV_LEN = 12;
+const HEADER_LEN = 4 + IV_LEN;
+
+const packStoredScene = (
+  sceneVersion: number,
+  iv: Uint8Array,
+  ciphertext: Uint8Array,
+): Uint8Array => {
+  const out = new Uint8Array(HEADER_LEN + ciphertext.length);
+  new DataView(out.buffer).setUint32(0, sceneVersion >>> 0, false); // big-endian
+  out.set(iv, 4);
+  out.set(ciphertext, HEADER_LEN);
+  return out;
 };
 
-const base64ToBytes = (b64: string): Uint8Array<ArrayBuffer> => {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) {
-    out[i] = bin.charCodeAt(i);
+type StoredScene = {
+  sceneVersion: number;
+  iv: Uint8Array<ArrayBuffer>;
+  ciphertext: Uint8Array<ArrayBuffer>;
+};
+
+const unpackStoredScene = (buf: ArrayBuffer): StoredScene | null => {
+  if (buf.byteLength < HEADER_LEN) {
+    return null;
   }
-  return out as Uint8Array<ArrayBuffer>;
+  const view = new DataView(buf);
+  const sceneVersion = view.getUint32(0, false);
+  const iv = new Uint8Array(buf, 4, IV_LEN);
+  const ciphertext = new Uint8Array(buf, HEADER_LEN);
+  // Copia pra garantir ArrayBuffer (não SharedArrayBuffer) no type system.
+  return {
+    sceneVersion,
+    iv: new Uint8Array(iv) as Uint8Array<ArrayBuffer>,
+    ciphertext: new Uint8Array(ciphertext) as Uint8Array<ArrayBuffer>,
+  };
 };
 
 // -----------------------------------------------------------------------------
 // Crypto wrappers (mesmo esquema que o firebase.ts original do upstream)
 // -----------------------------------------------------------------------------
-
-type StoredScene = {
-  sceneVersion: number;
-  iv: string; // base64
-  ciphertext: string; // base64
-};
 
 const encryptElements = async (
   key: string,
@@ -100,9 +113,7 @@ const decryptElements = async (
   data: StoredScene,
   roomKey: string,
 ): Promise<readonly ExcalidrawElement[]> => {
-  const ciphertext = base64ToBytes(data.ciphertext);
-  const iv = base64ToBytes(data.iv);
-  const decrypted = await decryptData(iv, ciphertext, roomKey);
+  const decrypted = await decryptData(data.iv, data.ciphertext, roomKey);
   const decodedData = new TextDecoder("utf-8").decode(
     new Uint8Array(decrypted),
   );
@@ -159,16 +170,13 @@ const fetchStoredScene = async (
       console.warn(`[overlay] GET room ${roomId} -> ${res.status}`);
       return null;
     }
-    const json = (await res.json()) as StoredScene;
-    if (
-      typeof json?.sceneVersion !== "number" ||
-      typeof json?.iv !== "string" ||
-      typeof json?.ciphertext !== "string"
-    ) {
+    const buf = await res.arrayBuffer();
+    const parsed = unpackStoredScene(buf);
+    if (!parsed) {
       console.warn(`[overlay] GET room ${roomId} -> payload invalido`);
       return null;
     }
-    return json;
+    return parsed;
   } catch (err) {
     console.warn(`[overlay] GET room ${roomId} falhou`, err);
     return null;
@@ -180,10 +188,15 @@ const putStoredScene = async (
   scene: StoredScene,
 ): Promise<boolean> => {
   try {
+    const body = packStoredScene(
+      scene.sceneVersion,
+      scene.iv,
+      scene.ciphertext,
+    );
     const res = await fetch(roomsEndpoint(roomId), {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(scene),
+      headers: { "Content-Type": "application/octet-stream" },
+      body: body.slice().buffer as ArrayBuffer,
     });
     if (!res.ok) {
       console.warn(`[overlay] PUT room ${roomId} -> ${res.status}`);
@@ -204,8 +217,8 @@ const buildStoredScene = async (
   const { ciphertext, iv } = await encryptElements(roomKey, elements);
   return {
     sceneVersion,
-    iv: bytesToBase64(iv),
-    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+    iv,
+    ciphertext: new Uint8Array(ciphertext) as Uint8Array<ArrayBuffer>,
   };
 };
 
