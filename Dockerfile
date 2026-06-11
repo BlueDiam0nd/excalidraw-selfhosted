@@ -2,11 +2,18 @@
 # para nossa infra self-hosted (room + storage).
 #
 # Args:
-#   EXCALIDRAW_REF      → branch, tag ou commit do repo oficial (default: master)
+#   EXCALIDRAW_REF      → SHA (default), tag ou branch do repo oficial
 #   WS_SERVER_URL       → URL do excalidraw-room
 #   BACKEND_V2_URL      → URL base do storage (sem trailing slash)
+#
+# Default fixo em SHA para evitar drift silencioso entre builds — overlay
+# `firebase-overlay.ts` assume a interface do upstream nesse commit:
+#   - paths `@excalidraw/excalidraw/data/{encryption,encode,restore}`
+#   - `@excalidraw/element` exporta `getSceneVersion`
+#   - `Portal` em `../collab/Portal` com `{socket, roomId, roomKey}`
+# Antes de bumpar, revisar `excalidraw-app/data/firebase.ts` do upstream.
 
-ARG EXCALIDRAW_REF=master
+ARG EXCALIDRAW_REF=a83ac488536dbf4bc4dcf1f472f72ce3b4bd2073
 
 FROM node:20-alpine AS builder
 ARG EXCALIDRAW_REF
